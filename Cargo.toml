@@ -1,0 +1,49 @@
+[package]
+name = "onechain"
+version = "1.0.0"
+edition = "2021"
+authors = ["Anirudh Vyas <ricky.nj@gmail.com>"]
+description = "Onechain is a blockchain library for building simple, utterly simple blockchains."
+license = "MIT"
+repository = "https://github.com/goldilocksfashion/onechain"
+documentation = "https://docs.rs/dripp_backend"
+homepage = "https://github.com/goldilocksfashion/onechain"
+keywords = ["p2p", "networking", "blochchain", "blockchain", "crypto", "cryptocurrency", "decentralized", "distributed"]
+categories = ["network-programming", "data-structures", "peer-to-peer"]
+
+[lib]
+name = "onechain"
+crate-type = ["lib","staticlib", "cdylib"]
+
+[dependencies]
+## Identity
+uuid = "1.12.1"
+chrono = "0.4.39"
+ssi = "0.10.2"  
+rocksdb = "0.23.0"
+sha2 ="0.10.8"
+bincode = "1.3.3"
+ed25519-dalek = "2.1.1" 
+## Networking
+iroh = "0.31.0"
+## Core
+derive_builder = "0.20.2"
+thiserror = "2.0.11"
+tokio = { version = "1.10.0", features = ["rt", "rt-multi-thread", "io-util", "time", "sync"] }
+serde =  "1.0.217" 
+serde_json = "1.0.137"
+futures = "0.3"
+once_cell = "1.0"
+
+
+## Optional
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]
+proptest = "1.6.0" 
+
+[profile.release]
+strip = "symbols" # Strip unnecessary symbols during build
+opt-level = "z" 
+lto = true
+panic = "abort" # Abort on panic
