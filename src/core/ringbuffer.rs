@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use std::collections::LinkedList;
 
 /// Default hasher for the linked list.
-pub fn sha_hash(data: [u8; 10]) -> [u8; 16] {
+pub fn sha_hash(data: &[u8; 10]) -> [u8; 16] {
     let mut sha = Sha256::new();
     sha.update(&data);
     let full_hash = sha.finalize();
@@ -42,8 +42,8 @@ pub struct BlockRingBuffer {
 pub trait BlockRingBufferOps {
     fn new() -> BlockRingBuffer;
     fn add(&mut self, phone_number: [u8; 10]);
-    fn delete(&mut self) -> Option<[u8; 10]>;
-    fn search(&self, phone_number: [u8; 10]) -> Option<&Block>;
+    fn delete(&mut self, phone_number: [u8; 10]) -> bool;
+    fn search(&self, phone_number: [u8; 10]) -> Option<usize>;
     fn length(&self) -> usize;
 }
 
@@ -62,25 +62,24 @@ impl BlockRingBufferOps for BlockRingBuffer {
 
     fn add(&mut self, phone_number: [u8; 10]) {
         let new_block = Block::new(phone_number);
-        if (self.size == 0) {
+        if self.size == 0 {
             self.head = Some(0);
             self.tail = Some(0);
             self.blocks[0] = Some(new_block);
             self.size += 1;
-            self.cumulative_hash = sha_hash(phone_number);
+            self.cumulative_hash = sha_hash(&phone_number);
             return;
         } else {
             self.cumulative_hash = self
                 .cumulative_hash
-                .iter()
-                .into_iter()
-                .zip(sha_hash(phone_number))
-                .map(|(a, b)| a ^ b)
+                .iter_mut()
+                .zip(sha_hash(&phone_number))
+                .map(|(a, b)| *a ^ b)
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap();
             // TODO: Bitmap logic needs revisiting
-            let mut tail_index = self.tail.unwrap();
+            let tail_index = self.tail.unwrap();
             // update tail block to point to new block
             let mut current_tail_block = self.blocks[tail_index].unwrap();
             // for new block to be added, current_tail_block -> next
@@ -90,7 +89,7 @@ impl BlockRingBufferOps for BlockRingBuffer {
             let new_tail_index = (tail_index + 1) % self.capacity;
             let new_byte_index = new_tail_index / 8;
             let bit_offset = new_tail_index % 8;
-            self.bitmap[new_byte_index] |= (1 << (bit_offset));
+            self.bitmap[new_byte_index] |= 1 << (bit_offset);
             current_tail_block.next = Some(new_tail_index);
             // set tail block back to tail_index
             self.blocks[tail_index] = Some(current_tail_block);
@@ -105,15 +104,26 @@ impl BlockRingBufferOps for BlockRingBuffer {
         }
     }
 
-    fn delete(&mut self) -> Option<[u8; 10]> {
-        todo!()
+    fn delete(&mut self, phone_number: [u8; 10]) -> bool {
+        // check for presence 
+        let hashed: [u8; 16] = sha_hash(&phone_number);
+        let block_opt = self.search(phone_number);
+        match block_opt {
+            Some(b) => {
+                self.blocks[b] = None;
+                self.size -= 1;
+                return true;
+            }
+            None => return false,
+        }
     }
 
-    fn search(&self, phone_number: [u8; 10]) -> Option<&Block> {
+    fn search(&self, phone_number: [u8; 10]) -> Option<usize> {
+        
         todo!()
     }
 
     fn length(&self) -> usize {
-        todo!()
+        return self.size;
     }
 }
