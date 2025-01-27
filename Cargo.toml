@@ -15,8 +15,13 @@ categories = ["network-programming", "data-structures", "peer-to-peer"]
 name = "onechain"
 crate-type = ["lib","staticlib", "cdylib"]
 
+[features]
+logging = []
+
 [dependencies]
 ## Identity
+log = "0.4.25"
+simplelog = "0.12.2"
 uuid = "1.12.1"
 chrono = "0.4.39"
 ssi = "0.10.2"  

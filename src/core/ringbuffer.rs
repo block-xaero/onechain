@@ -1,6 +1,7 @@
 use chrono::prelude::*;
 use sha2::{Digest, Sha256};
 use std::collections::LinkedList;
+use log::{debug, info, warn};
 
 /// Default hasher for the linked list.
 pub fn sha_hash(data: &[u8; 10]) -> [u8; 16] {
@@ -13,19 +14,22 @@ pub fn sha_hash(data: &[u8; 10]) -> [u8; 16] {
 }
 /// Node struct for building hand-rolled linked list.
 #[derive(Debug, Clone, Copy)]
+#[repr(align(64))] // align to 64 bytes for cache line alignment
 pub struct Block {
     pub data: [u8; 16],
     pub timestamp: i64,
+    pub disabled: bool,
     pub next: Option<usize>,
 }
 
 impl Block {
-    pub fn new(phone_number: [u8; 10]) -> Block {
-        let hash: [u8; 16] = sha_hash(phone_number);
+    pub fn new(phone_number: [u8; 10], is_disabled: bool) -> Block {
+        let hash: [u8; 16] = sha_hash(&phone_number);
         return Block {
             data: hash,
             next: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
+            disabled: is_disabled,
         };
     }
 }
@@ -33,7 +37,7 @@ impl Block {
 pub struct BlockRingBuffer {
     pub cumulative_hash: [u8; 16],
     pub bitmap: [u8; 13],
-    pub blocks: [Option<Block>; 100], // fixed length array of blocks
+    pub blocks: [Option<Block>; 100], // pre-allocate fixed length array of blocks
     pub head: Option<usize>,
     pub tail: Option<usize>,
     pub size: usize,
@@ -41,7 +45,7 @@ pub struct BlockRingBuffer {
 }
 pub trait BlockRingBufferOps {
     fn new() -> BlockRingBuffer;
-    fn add(&mut self, phone_number: [u8; 10]);
+    fn add(&mut self, phone_number: [u8; 10]) -> bool;
     fn delete(&mut self, phone_number: [u8; 10]) -> bool;
     fn search(&self, phone_number: [u8; 10]) -> Option<usize>;
     fn length(&self) -> usize;
@@ -60,24 +64,51 @@ impl BlockRingBufferOps for BlockRingBuffer {
         }
     }
 
-    fn add(&mut self, phone_number: [u8; 10]) {
-        let new_block = Block::new(phone_number);
+    fn add(&mut self, phone_number: [u8; 10]) -> bool {
+        let new_block = Block::new(phone_number, false);
+        self._add(phone_number, new_block);
+        return true;
+    }
+
+    fn delete(&mut self, phone_number: [u8; 10]) -> bool {
+        let new_block = Block::new(phone_number, true);
+        self._add(phone_number, new_block);
+        return true;
+    }
+
+    fn search(&self, phone_number: [u8; 10]) -> Option<usize> {
+        // TODO: Quick Traversal
+        let key = sha_hash(&phone_number);
+        for i in 0..self.size {
+            let block = self.blocks[i].unwrap();
+            if block.data == key {
+                return Some(i);
+            }
+        }
+        return None;
+    }
+
+    fn length(&self) -> usize {
+        return self.size;
+    }
+}
+
+impl BlockRingBuffer {
+    /// Internal method to add a new block to the ring buffer.
+    /// tail block is updated to point to new block
+    fn _add(&mut self, phone_number: [u8; 10], new_block: Block) {
         if self.size == 0 {
             self.head = Some(0);
             self.tail = Some(0);
             self.blocks[0] = Some(new_block);
             self.size += 1;
+            self.bitmap[0] |= 1;
             self.cumulative_hash = sha_hash(&phone_number);
             return;
         } else {
-            self.cumulative_hash = self
-                .cumulative_hash
-                .iter_mut()
-                .zip(sha_hash(&phone_number))
-                .map(|(a, b)| *a ^ b)
-                .collect::<Vec<u8>>()
-                .try_into()
-                .unwrap();
+            for (a, b) in self.cumulative_hash.iter_mut().zip(sha_hash(&phone_number)) {
+                *a ^= b;
+            }
             // TODO: Bitmap logic needs revisiting
             let tail_index = self.tail.unwrap();
             // update tail block to point to new block
@@ -89,12 +120,15 @@ impl BlockRingBufferOps for BlockRingBuffer {
             let new_tail_index = (tail_index + 1) % self.capacity;
             let new_byte_index = new_tail_index / 8;
             let bit_offset = new_tail_index % 8;
+            // reset the bit in bitmap -- replacement scenario
+            self.bitmap[new_byte_index] &= !(1 << (bit_offset));
+            // set the bit in bitmap
             self.bitmap[new_byte_index] |= 1 << (bit_offset);
             current_tail_block.next = Some(new_tail_index);
             // set tail block back to tail_index
             self.blocks[tail_index] = Some(current_tail_block);
             // new tail block is the new block
-            self.blocks[tail_index + 1] = Some(new_block);
+            self.blocks[new_tail_index] = Some(new_block);
             self.tail = Some(new_tail_index);
             if self.size < self.capacity {
                 self.size += 1;
@@ -102,28 +136,5 @@ impl BlockRingBufferOps for BlockRingBuffer {
                 self.size = self.capacity
             }
         }
-    }
-
-    fn delete(&mut self, phone_number: [u8; 10]) -> bool {
-        // check for presence 
-        let hashed: [u8; 16] = sha_hash(&phone_number);
-        let block_opt = self.search(phone_number);
-        match block_opt {
-            Some(b) => {
-                self.blocks[b] = None;
-                self.size -= 1;
-                return true;
-            }
-            None => return false,
-        }
-    }
-
-    fn search(&self, phone_number: [u8; 10]) -> Option<usize> {
-        
-        todo!()
-    }
-
-    fn length(&self) -> usize {
-        return self.size;
     }
 }
