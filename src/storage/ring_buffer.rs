@@ -1,38 +1,5 @@
-use chrono::prelude::*;
 use sha2::{Digest, Sha256};
-use std::collections::LinkedList;
-use log::{debug, info, warn};
-
-/// Default hasher for the linked list.
-pub fn sha_hash(data: &[u8; 10]) -> [u8; 16] {
-    let mut sha = Sha256::new();
-    sha.update(&data);
-    let full_hash = sha.finalize();
-    return full_hash[..16]
-        .try_into()
-        .expect("Failed to convert hash to fixed size array");
-}
-/// Node struct for building hand-rolled linked list.
-#[derive(Debug, Clone, Copy)]
-#[repr(align(64))] // align to 64 bytes for cache line alignment
-pub struct Block {
-    pub data: [u8; 16],
-    pub timestamp: i64,
-    pub disabled: bool,
-    pub next: Option<usize>,
-}
-
-impl Block {
-    pub fn new(phone_number: [u8; 10], is_disabled: bool) -> Block {
-        let hash: [u8; 16] = sha_hash(&phone_number);
-        return Block {
-            data: hash,
-            next: None,
-            timestamp: chrono::Utc::now().timestamp_millis(),
-            disabled: is_disabled,
-        };
-    }
-}
+use core::block::Block;
 
 pub struct BlockRingBuffer {
     pub cumulative_hash: [u8; 16],
@@ -47,7 +14,8 @@ pub trait BlockRingBufferOps {
     fn new() -> BlockRingBuffer;
     fn add(&mut self, phone_number: [u8; 10]) -> bool;
     fn delete(&mut self, phone_number: [u8; 10]) -> bool;
-    fn search(&self, phone_number: [u8; 10]) -> Option<usize>;
+    /// Reader flushes the read blocks from ring buffer
+    fn flush(&mut self) -> bool;
     fn length(&self) -> usize;
 }
 
@@ -76,20 +44,20 @@ impl BlockRingBufferOps for BlockRingBuffer {
         return true;
     }
 
-    fn search(&self, phone_number: [u8; 10]) -> Option<usize> {
-        // TODO: Quick Traversal
-        let key = sha_hash(&phone_number);
-        for i in 0..self.size {
-            let block = self.blocks[i].unwrap();
-            if block.data == key {
-                return Some(i);
-            }
-        }
-        return None;
-    }
-
     fn length(&self) -> usize {
         return self.size;
+    }
+
+    fn flush(&mut self) -> bool {
+        if self.size <= 1 || self.head.unwrap() == self.tail.unwrap() {
+            return false;
+        } else {
+            let head_index = self.head.unwrap();
+            let mut current_head_block = self.blocks[head_index].unwrap();
+            // TODO: Flush to memtable
+            self.head = Some((self.head.unwrap() + 1) % self.capacity);
+            return true;
+        }
     }
 }
 
@@ -109,7 +77,6 @@ impl BlockRingBuffer {
             for (a, b) in self.cumulative_hash.iter_mut().zip(sha_hash(&phone_number)) {
                 *a ^= b;
             }
-            // TODO: Bitmap logic needs revisiting
             let tail_index = self.tail.unwrap();
             // update tail block to point to new block
             let mut current_tail_block = self.blocks[tail_index].unwrap();
