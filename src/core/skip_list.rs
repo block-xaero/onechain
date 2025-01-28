@@ -1,7 +1,6 @@
-use crate::sys::pin_memory;
+use crate::core::block::Block;
 use crate::sys::blocks_ptr;
-use crate::storage::ringbuffer::Block;
-
+use crate::sys::pin_memory;
 
 #[repr(C)]
 pub struct SkipList {
@@ -20,8 +19,7 @@ pub trait SkipListOps {
     fn search(&self, key: [u8; 100]) -> Option<Block>;
 }
 
-pub impl SkipList {
-    
+impl SkipList {
     fn init() -> SkipList {
         let skip_list = SkipList::_new();
         let blocks_ptr = blocks_ptr(&skip_list);
@@ -38,7 +36,7 @@ pub impl SkipList {
     }
 }
 
-pub impl SkipListOps for SkipList {
+impl SkipListOps for SkipList {
     fn add(&mut self, blocks: [u8; 100]) -> bool {
         todo!()
     }

@@ -1,5 +1,5 @@
-use sha2::{Digest, Sha256};
-use core::block::Block;
+use crate::core::block::*;
+use sha2::*;
 
 pub struct BlockRingBuffer {
     pub cumulative_hash: [u8; 16],
