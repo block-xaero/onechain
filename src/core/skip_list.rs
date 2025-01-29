@@ -1,12 +1,36 @@
 use crate::core::block::Block;
 use crate::sys::blocks_ptr;
 use crate::sys::pin_memory;
+use rand::Rng;
 
+// 1K blocks logn = 10
+const SIZE: usize = 1000;
+const HOT_DATA_PROBABILITY_THRESHOLD: f64 = 0.75;
+const COLD_DATA_PROBABILITY_THRESHOLD: f64 = 0.25;
+
+pub fn random_level() -> usize {
+    let mut level = 1;
+
+    while rand::random::<bool>() && level < 10 {
+        level += 1;
+    }
+    return level;
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct SkipNode {
+    /// bitmap that represents layers this node is present.
+    /// 0000 , 0000 (first 4 bits for layer, next 4 bits for offset index on layer 0)
+    /// Node is present in layer 0 and offset 1[ 0000, 0001]
+    /// Node is present in layer 0 and offset 1 & Node is present in layer 1 and offset 2[ (0000, 0001) , (0001, 0010)]
+    pub layer_next: [u8; 10], // 10 layers
+    pub tombstone: bool,
+    pub data: [u8; 16], // hash of phone number
+}
 #[repr(C)]
 pub struct SkipList {
-    pub size: usize,
-    pub capacity: usize,
-    pub blocks: [Option<Block>; 1000], // pre-allocate fixed length array of blocks
+    // pre-allocate fixed length array of blocks
+    pub level0: [Option<SkipNode>; SIZE],
 }
 
 pub trait SkipListOps {
@@ -28,11 +52,7 @@ impl SkipList {
         return skip_list;
     }
     fn _new() -> Self {
-        return SkipList {
-            size: 0,
-            capacity: 1000,
-            blocks: [None; 1000],
-        };
+        return SkipList { level0: [None; 1000] };
     }
 }
 

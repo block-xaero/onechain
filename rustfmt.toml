@@ -1,0 +1,4 @@
+# Run rustfmt with this config (it should be picked up automatically).max_width = 100
+use_small_heuristics = "Max"
+merge_derives = true
+struct_lit_width = 40

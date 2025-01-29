@@ -13,6 +13,7 @@ pub struct BlockRingBuffer {
 pub trait BlockRingBufferOps {
     fn new() -> BlockRingBuffer;
     fn add(&mut self, phone_number: [u8; 10]) -> bool;
+    /// tombstone the block
     fn delete(&mut self, phone_number: [u8; 10]) -> bool;
     /// Reader flushes the read blocks from ring buffer
     fn flush(&mut self) -> bool;
