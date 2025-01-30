@@ -1,7 +1,7 @@
-/// Datasource is used to 
+/// Datasource is used to
 /// to present layers of data storage options
-enum DataSource{
+pub enum DataSource {
     RingBuffer,
     MemTable,
-    SSTable
+    SSTable,
 }
