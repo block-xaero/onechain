@@ -27,21 +27,21 @@ pub fn random_level(data: &[u8; 16], source: DataSource) -> usize {
                 if rand::random::<f64>() > HOT_DATA_PROBABILITY_THRESHOLD {
                     level += 1;
                 }
-            }
+            },
             DataSource::MemTable => {
                 if rand::random::<f64>() > MEDIUM_PROBABILITY_THRESHOLD {
                     level += 1;
                 }
-            }
+            },
 
             DataSource::SSTable => {
                 if rand::random::<f64>() > COLD_DATA_PROBABILITY_THRESHOLD {
                     level += 1;
                 }
-            }
+            },
         }
     }
-    return level;
+    level
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -73,13 +73,22 @@ impl Ord for SkipNode {
 }
 impl SkipNode {
     fn new(data: [u8; 16], tombstone_marker: bool, source: DataSource) -> Self {
-        return SkipNode {
+        SkipNode {
             layer_next: [0; 8],
             tombstone: tombstone_marker,
             data,
-        };
+        }
     }
 }
+
+/// A bitmap based skip_list
+/// Each node maintains a bitmap (array of fixed size) to represent layers it is present in (using high nibble in a byte) and
+/// total steps it takes from head to reach this node (using low nibble in a byte).
+/// Each node maintains a tombstone marker to indicate if the node is deleted.
+/// Each node maintains a data field to store the hash of phone number (in future any other data like posts or something related to social network)
+/// This makes skip_list a sorted array with fixed pre-allocated blocks of memory.
+/// And is pinned in memory during initialization.
+/// No dynamic memory allocation is done mostly, when full flush to `SSTable` is done.
 #[repr(C)]
 pub struct SkipList {
     /// represents a sorted array of
@@ -104,13 +113,13 @@ impl SkipList {
         let blocks_ptr = blocks_ptr(&skip_list);
         // force failure if the memory is not pinned
         pin_memory(blocks_ptr, std::mem::size_of_val(&skip_list.blocks)).unwrap();
-        return skip_list;
+        skip_list
     }
     fn _new() -> Self {
-        return SkipList {
+        SkipList {
             heads: [usize::MAX; 8],
             blocks: [None; 1000],
-        };
+        }
     }
 }
 
@@ -121,7 +130,7 @@ impl SkipListOps for SkipList {
             // flush the skip list to SSTable
             inserted = self.flush();
         } else {
-            let max_level = random_level(&data, DataSource::RingBuffer);
+            let max_level = random_level(data, DataSource::RingBuffer);
             let mut new_node = SkipNode::new(*data, tombstone_marker, DataSource::RingBuffer);
             // find right place to insert node
             for i in (0..max_level).rev() {
@@ -145,7 +154,7 @@ impl SkipListOps for SkipList {
                     let lower_nibble =
                         (new_node.layer_next[byte_offset] & 0x0F) | (1 << step_offset);
                     new_node.layer_next[byte_offset] = higher_nibble | lower_nibble;
-                    self.blocks[pos] = Some(new_node.clone());
+                    self.blocks[pos] = Some(new_node);
                     inserted = true;
                 }
             }

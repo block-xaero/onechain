@@ -1,7 +1,4 @@
-use crate::core::block::Block;
 use crate::core::skip_list::SkipList;
-use crate::sys::blocks_ptr;
-use crate::sys::pin_memory;
 
 pub struct MemTable {
     pub blocks: SkipList,
