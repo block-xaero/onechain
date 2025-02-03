@@ -177,7 +177,7 @@ impl SkipListOps for SkipList {
 
     fn merge(&mut self, other: [u8; 100]) -> bool {
         // merge ringbuffer with skip list for future flush
-        
+        return true;
     }
 }
 
