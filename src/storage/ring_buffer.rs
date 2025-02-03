@@ -1,9 +1,9 @@
-use std::time::Instant;
-use proptest::prelude::*;
 use crate::core::block::*;
+use proptest::prelude::*;
 use sha2::*;
+use std::time::Instant;
 
-const PADDING : [u8;56] = [0;56];
+const PADDING: [u8; 56] = [0; 56];
 #[repr(align(64))] // align to 64 bytes for cache line alignment
 pub struct AlignedPosition {
     pub data: Option<usize>,
@@ -80,12 +80,16 @@ impl BlockRingBuffer {
     fn _add(&mut self, phone_number: [u8; 10], new_block: Block) {
         if self.size == 0 {
             self.head = AlignedPosition { data: Some(0), padding: PADDING };
-            self.tail = AlignedPosition { data: Some(0) , padding: PADDING };
+            self.tail = AlignedPosition { data: Some(0), padding: PADDING };
             self.blocks[0] = Some(new_block);
             self.size += 1;
             self.bitmap[0] |= 1;
             self.cumulative_hash = sha_hash(&phone_number);
         } else {
+            // vectorized SIMD instruction to update cumulative hash
+            let new_cumulative_hash = u128::from_le_bytes(self.cumulative_hash)
+                ^ u128::from_le_bytes(sha_hash(&phone_number));
+            self.cumulative_hash = new_cumulative_hash.to_le_bytes();
             for (a, b) in self.cumulative_hash.iter_mut().zip(sha_hash(&phone_number)) {
                 *a ^= b;
             }
@@ -108,7 +112,10 @@ impl BlockRingBuffer {
             self.blocks[tail_index] = Some(current_tail_block);
             // new tail block is the new block
             self.blocks[new_tail_index] = Some(new_block);
-            self.tail = AlignedPosition { data: Some(new_tail_index), padding: PADDING };
+            self.tail = AlignedPosition {
+                data: Some(new_tail_index),
+                padding: PADDING,
+            };
             if self.size < self.capacity {
                 self.size += 1;
             } else {
@@ -121,7 +128,7 @@ impl BlockRingBuffer {
 #[test]
 fn test_add_and_flush() {
     let mut ring_buffer = BlockRingBuffer::new();
-    
+
     // Add a few phone numbers
     assert!(ring_buffer.add([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
     assert_eq!(ring_buffer.size, 1);
@@ -138,12 +145,11 @@ fn test_add_and_flush() {
     assert_eq!(ring_buffer.head.data.unwrap(), 1);
 }
 
-
 proptest! {
     #[test]
     fn stress_test_ringbuffer_add_delete(ref phone_numbers in prop::collection::vec(prop::array::uniform10(0u8..255), 100)) {
         let mut ring_buffer = BlockRingBuffer::new();
-        
+
         // Add 100 random phone numbers
         for phone in phone_numbers.iter() {
             assert!(ring_buffer.add(*phone));
@@ -176,7 +182,7 @@ fn test_cache_behavior() {
 #[test]
 fn test_overflow() {
     let mut ring_buffer = BlockRingBuffer::new();
-    
+
     for i in 0..110 {
         ring_buffer.add([(i % 256) as u8; 10]);
     }
@@ -224,7 +230,8 @@ fn test_ringbuffer_l1_cache_access() {
     let num_iterations = 1_000_000; // Force repeated L1 cache hits
     let mut total_time = 0;
 
-    for _ in 0..10 { // Repeat 10 times for stability
+    for _ in 0..10 {
+        // Repeat 10 times for stability
         let start = Instant::now();
 
         for i in 0..num_iterations {
@@ -240,7 +247,6 @@ fn test_ringbuffer_l1_cache_access() {
     println!("Average time per ring buffer access: {:.2} ns", avg_time_per_access);
 }
 
-
 proptest! {
     #[test]
     fn test_cache_alignment(ref phone_numbers in prop::collection::vec(prop::array::uniform10(0u8..255), 100)) {
@@ -253,7 +259,7 @@ proptest! {
 
         let num_iterations = 1_000_000;
         let mut total_time = 0;
-        
+
         for _ in 0..10 {
             let start = Instant::now();
             for i in 0..num_iterations {

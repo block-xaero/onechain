@@ -104,7 +104,8 @@ pub trait SkipListOps {
     /// Reader flushes blocks from skip list and writes to SSTable
     fn flush(&mut self) -> bool;
     fn size(&self) -> usize;
-    fn search(&self, key: [u8; 100]) -> Option<Block>;
+    fn search(&self, key: [u8; 16]) -> Option<Block>;
+    fn merge(&mut self, other: [u8; 100]) -> bool;
 }
 
 impl SkipList {
@@ -170,8 +171,13 @@ impl SkipListOps for SkipList {
         todo!()
     }
 
-    fn search(&self, key: [u8; 100]) -> Option<Block> {
+    fn search(&self, key: [u8; 16]) -> Option<Block> {
         todo!()
+    }
+
+    fn merge(&mut self, other: [u8; 100]) -> bool {
+        // merge ringbuffer with skip list for future flush
+        
     }
 }
 
