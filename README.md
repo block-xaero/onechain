@@ -6,8 +6,9 @@ using following:
 3. Memtable is implemented as a skiplist 
 4. Memtable is flushed to disk using `mmap` (no or less IO) to SSTable.
 
-### First Attempt:
+### Basic Flows 
 
+NOTE: Merkle tree build is optional and would not be part of MVP.
 ```mermaid
 
 graph TD
@@ -73,74 +74,57 @@ is serialized using mmap and is faster.
 	2.	Blocks: Fixed-size blocks representing members.
 
 ```ascii 
-+-------------------------------+
-| Header (256 bytes)            |
-| - Capacity (usize)            | Total number of blocks in the file
-| - Head (usize)                | Index of the head block
-| - Tail (usize)                | Index of the tail block
-| - Cumulative Hash ([u8; 16])  | XOR of all block hashes for chain state
-| - Bitmap ([u8; 128])          | Block presence bitmap
-| - SSTable Version (u32)       | For compatibility across versions
-| - Timestamp (u64)             | Last write timestamp (UTC)
-| - Reserved Space (40 bytes)   | Reserved for future use
-+-------------------------------+
-| Block Index (256 bytes)       | Metadata for quick navigation
-| - Block 0 Offset (u32)        | Byte offset of Block 0
-| - Block 1 Offset (u32)        | Byte offset of Block 1
-| - ...                         |
-| - Block N Offset (u32)        |
-+-------------------------------+
-| Block Data Section            | Actual block data
-| Block 0 (64 bytes)            | Metadata and content
-| - Block Hash ([u8; 16])       | Hash of block data
-| - Data Length (u16)           | Length of the content
-| - Data (variable, up to 48B)  | Actual block data
-| Block 1 (64 bytes)            |
-| ...                           |
-| Block N (64 bytes)            |
-+-------------------------------+
-| Merkle Tree Root ([u8; 32])   | Cryptographic root hash
-+-------------------------------+
++----------------------------------------------------+
+|                   SSTableSegment                   |
++----------------------+----------------------------+
+| Bloom Filter        | Index Block                  |
+| (For fast lookup)   | (Key → Offset mapping)       |
++----------------------+----------------------------+
+|                     Data Block                     |
+|  (Sorted key-value pairs, stored in sorted order)  |
++----------------------------------------------------+
+|                  Metadata Block                    |
+| (Compression, timestamps, merge info, etc.)        |
++----------------------------------------------------+
+|                     Footer                         |
+| (Magic number, version, checksum, etc.)            |
++----------------------------------------------------+
 ```
 
-### Quick Review of QUIC (used in syncing the blockchain buffers)
+Data Block values:
+```ascii
++-----------+-----------+--------------------+
+| Key       | Offset    | Value              |
++-----------+-----------+--------------------+
+| "apple"   | 0x2000    | "fruit"            |
+| "banana"  | 0x2010    | "yellow fruit"     |
+| "cherry"  | 0x2020    | "red fruit"        |
++-----------+-----------+--------------------+
+```
+	•	Keys are sorted lexicographically (e.g., "apple" < "banana" < "cherry").
+	•	The Index Block maps keys to Data Block offsets.
+	•	The Bloom Filter helps avoid unnecessary lookups.
+
+### Novel way of exchanging Diffs for P2P data exchange
 
 ```mermaid
-sequenceDiagram
-    participant Peer A (Requester)
-    participant Peer B (Responder)
-    participant QUIC Transport Layer
-    
-    Note over Peer A (Requester): Initiates sync request
-    Peer A (Requester) ->> QUIC Transport Layer: Establish QUIC connection
-    QUIC Transport Layer ->> Peer B (Responder): Request connection
-    Peer B (Responder) ->> QUIC Transport Layer: Accept connection
+graph TD
+    A[Client Requests Block] -->|Check in RingBuffer| B{Block in RingBuffer?}
+    B -->|Yes| Z[Return Block]
+    B -->|No| C{Block in MemTable?}
+    C -->|Yes| Z
+    C -->|No| D{Block in SSTable?}
+    D -->|Yes| Z
+    D -->|No| E[Exchange Cumulative Hash with Peer]
 
-    Note over Peer A (Requester), Peer B (Responder): Metadata exchange
-    Peer A (Requester) ->> Peer B (Responder): Request file metadata (file hash, chunk list)
-    Peer B (Responder) ->> Peer A (Requester): Respond with metadata (chunk hashes, sizes)
+    E --> F[Compute XOR Diff]
+    F --> G{Missing Blocks Detected?}
+    G -->|No| H[Return Block Not Found]
+    G -->|Yes| I[Download Missing Blocks]
 
-    Note over Peer A (Requester): Request missing chunks
-    Peer A (Requester) ->> Peer B (Responder): Request missing chunks (e.g., Chunk 1, 3, 5)
+    I --> J[Insert into RingBuffer]
+    J --> K[Insert into MemTable]
+    K --> L[Insert into SSTable]
 
-    Note over QUIC Transport Layer: Multiplexing streams for chunks
-    Peer B (Responder) ->> QUIC Transport Layer: Send Chunk 1 on Stream 1
-    Peer B (Responder) ->> QUIC Transport Layer: Send Chunk 3 on Stream 2
-    Peer B (Responder) ->> QUIC Transport Layer: Send Chunk 5 on Stream 3
-
-    QUIC Transport Layer ->> Peer A (Requester): Deliver Chunk 1 on Stream 1
-    QUIC Transport Layer ->> Peer A (Requester): Deliver Chunk 3 on Stream 2
-    QUIC Transport Layer ->> Peer A (Requester): Deliver Chunk 5 on Stream 3
-
-    Note over Peer A (Requester): Chunk validation
-    Peer A (Requester) ->> Peer A (Requester): Validate Chunk 1 (hash match)
-    Peer A (Requester) ->> Peer A (Requester): Validate Chunk 3 (hash match)
-    Peer A (Requester) ->> Peer A (Requester): Validate Chunk 5 (hash match)
-
-    Note over Peer A (Requester), Peer B (Responder): Sync completion
-    Peer A (Requester) ->> Peer B (Responder): Acknowledge receipt of chunks
-    Peer B (Responder) ->> Peer A (Requester): Acknowledgment confirmed
-
-    Note over Peer A (Requester): File reconstruction
+    L --> M[Return Requested Block]
 ```
-
