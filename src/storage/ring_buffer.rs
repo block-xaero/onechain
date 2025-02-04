@@ -20,7 +20,6 @@ pub struct BlockRingBuffer {
     pub capacity: usize,
 }
 pub trait BlockRingBufferOps {
-    fn new() -> BlockRingBuffer;
     fn add(&mut self, phone_number: [u8; 10]) -> bool;
     /// tombstone the block
     fn delete(&mut self, phone_number: [u8; 10]) -> bool;
@@ -29,8 +28,8 @@ pub trait BlockRingBufferOps {
     fn length(&self) -> usize;
 }
 
-impl BlockRingBufferOps for BlockRingBuffer {
-    fn new() -> Self {
+impl BlockRingBuffer {
+    pub fn new() -> Self {
         BlockRingBuffer {
             cumulative_hash: [0; 16],
             bitmap: [0; 13],
@@ -41,7 +40,8 @@ impl BlockRingBufferOps for BlockRingBuffer {
             capacity: 100,
         }
     }
-
+}
+impl BlockRingBufferOps for BlockRingBuffer {
     fn add(&mut self, phone_number: [u8; 10]) -> bool {
         let new_block = Block::new(phone_number, false);
         self._add(phone_number, new_block);
@@ -90,9 +90,6 @@ impl BlockRingBuffer {
             let new_cumulative_hash = u128::from_le_bytes(self.cumulative_hash)
                 ^ u128::from_le_bytes(sha_hash(&phone_number));
             self.cumulative_hash = new_cumulative_hash.to_le_bytes();
-            for (a, b) in self.cumulative_hash.iter_mut().zip(sha_hash(&phone_number)) {
-                *a ^= b;
-            }
             let tail_index = self.tail.data.unwrap();
             // update tail block to point to new block
             let mut current_tail_block = self.blocks[tail_index].unwrap();

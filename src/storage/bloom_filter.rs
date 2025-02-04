@@ -3,13 +3,13 @@ use twox_hash::XxHash64;
 pub const BLOOM_FILTER_SIZE: usize = 150;
 pub struct BloomFilter {
     ///    Bloom filter size depends on:
-    // •	n = 1000 (number of elements in SSTable segment)
-    // •	p = False positive probability (e.g., 1%)
-    // •	m = Number of bits needed
-    // •	k = Number of hash functions
-    ///m = -(n * ln(p)) / (ln(2))²
-    ///k = (m / n) * ln(2)
-    ///For n = 1000 and p = 1% (0.01):
+    ///	n = 1000 (number of elements in SSTable segment)
+    /// 	p = False positive probability (e.g., 1%)
+    /// 	m = Number of bits needed
+    /// 	k = Number of hash functions
+    /// m = -(n * ln(p)) / (ln(2))²
+    /// k = (m / n) * ln(2)
+    /// For n = 1000 and p = 1% (0.01):
     /// m ≈ -(1000 * ln(0.01)) / (ln(2))²
     ///   ≈ (1000 * 4.6) / 0.48
     ///   ≈ 9580 bits (≈ 1197 bytes)

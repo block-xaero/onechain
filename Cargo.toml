@@ -32,6 +32,7 @@ rustflags = ["-C", "target-cpu=native"]
 
 [dependencies]
 proptest = "1.6.0"
+memmap2 = "0.9.5"
 ## Identity
 twox-hash = "2.1.0"
 rand = "0.9.0"
