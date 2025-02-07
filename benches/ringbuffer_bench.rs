@@ -1,6 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion, black_box};
 use std::time::Instant;
 use onechain::storage::ring_buffer::BlockRingBuffer;
+use onechain::core::block::Block;
+use onechain::storage::ring_buffer::BlockRingBufferOps;
 use proptest::prelude::*;
 
 fn bench_ringbuffer_l1_cache_access(c: &mut Criterion) {

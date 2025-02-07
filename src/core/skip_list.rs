@@ -4,6 +4,7 @@ use crate::core::block::Block;
 use crate::datasource::DataSource;
 use crate::sys::blocks_ptr;
 use crate::sys::pin_memory;
+use serde::{Deserialize, Serialize};
 
 // 1K blocks logn = 10
 const MAX_LEVEL: usize = 8;
@@ -44,7 +45,7 @@ pub fn random_level(data: &[u8; 16], source: DataSource) -> usize {
     level
 }
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct SkipNode {
     /// bitmap that represents layers this node is present.
     /// 0000 , 0000 (first 4 bits for layer, next 4 bits for offset index on layer 0)
@@ -109,7 +110,7 @@ pub trait SkipListOps {
 }
 
 impl SkipList {
-    fn init() -> SkipList {
+    pub fn init() -> SkipList {
         let skip_list = SkipList::_new();
         let blocks_ptr = blocks_ptr(&skip_list);
         // force failure if the memory is not pinned

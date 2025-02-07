@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
 use twox_hash::XxHash64;
 
-pub const BLOOM_FILTER_SIZE: usize = 150;
+pub const BLOOM_FILTER_SIZE: usize = 19;
+
+#[derive(Debug, Clone)]
 pub struct BloomFilter {
     ///    Bloom filter size depends on:
     ///	n = 1000 (number of elements in SSTable segment)
@@ -15,7 +18,7 @@ pub struct BloomFilter {
     ///   ≈ 9580 bits (≈ 1197 bytes)
     /// k ≈ (9580 / 1000) * ln(2)
     /// ≈ 6.64  (round to **7 hash functions**)
-    pub bits: [u8; BLOOM_FILTER_SIZE], // 100 bytes each byte represents
+    pub bits: [u8; BLOOM_FILTER_SIZE], // 150 bits
 }
 
 pub trait BloomFilterOps {
@@ -38,6 +41,7 @@ impl BloomFilter {
     /// 6. MetroHash-derived
     /// 7. xxHash-derived
     fn hash(&self, hashed: &[u8; 16], filter_size: usize) -> [usize; 7] {
+        // FIXME: Seed is hardcoded - needs to be configurable
         let base_hash = XxHash64::oneshot(1234, hashed);
         return [
             (base_hash >> 32) as usize % filter_size,
@@ -70,5 +74,32 @@ impl BloomFilterOps for BloomFilter {
         for index in hashed_indices {
             self.set_bit(index);
         }
+    }
+}
+
+impl Serialize for BloomFilter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.bits.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for BloomFilter {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+        if bytes.len() != BLOOM_FILTER_SIZE {
+            return Err(serde::de::Error::custom(format!(
+                "Invalid BloomFilter size: {}",
+                bytes.len()
+            )));
+        }
+        let mut bits = [0u8; BLOOM_FILTER_SIZE];
+        bits.copy_from_slice(&bytes);
+        Ok(BloomFilter { bits })
     }
 }

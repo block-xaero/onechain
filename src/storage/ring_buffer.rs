@@ -1,7 +1,9 @@
-use crate::core::block::*;
+use crate::core::{block::*, quick_sort};
 use proptest::prelude::*;
 use sha2::*;
 use std::time::Instant;
+
+use super::mem_table::{MemTable, MemTableOps};
 
 const PADDING: [u8; 56] = [0; 56];
 #[repr(align(64))] // align to 64 bytes for cache line alignment
@@ -24,7 +26,7 @@ pub trait BlockRingBufferOps {
     /// tombstone the block
     fn delete(&mut self, phone_number: [u8; 10]) -> bool;
     /// Reader flushes the read blocks from ring buffer
-    fn flush(&mut self) -> bool;
+    fn flush(&mut self, memtable: &mut MemTable) -> bool;
     fn length(&self) -> usize;
 }
 
@@ -58,18 +60,23 @@ impl BlockRingBufferOps for BlockRingBuffer {
         self.size
     }
 
-    fn flush(&mut self) -> bool {
+    fn flush(&mut self, mt: &mut MemTable) -> bool {
         if self.size <= 1 || self.head.data.unwrap() == self.tail.data.unwrap() {
             false
         } else {
-            let head_index = self.head.data.unwrap();
-            let current_head_block = self.blocks[head_index].unwrap();
-            // TODO: Flush to memtable
-            self.head = AlignedPosition {
-                data: Some((self.head.data.unwrap() + 1) % self.capacity),
-                padding: PADDING,
-            };
-            true
+            if self.size == self.capacity {
+                quick_sort(&mut self.blocks);
+                let read_index = self.head.data.unwrap();
+                // flush to memtable
+                for i in read_index..self.size {
+                    let block = self.blocks[i].unwrap();
+                    mt.add(&block.data, block.disabled);
+                }
+                return true;
+            } else {
+                // do not flush until capacity is reached
+                return false;
+            }
         }
     }
 }
@@ -214,4 +221,3 @@ fn test_bulk_add_performance() {
     let elapsed = start.elapsed();
     println!("Bulk add (100,000 inserts) took: {:?}", elapsed);
 }
-
